@@ -1,0 +1,257 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Simple Player Example</title>
+  <style> 
+	#myVideo { border: 2px solid green; }
+  </style>
+</head>
+<body>
+  <canvas id="myVideo"	width=900; height=700> </canvas>
+  <video autoplay control id="remoteVideo"></video>
+  <button id=pause disabled>Pause</button>
+  <button id='initAudio' >init audio</button>
+		
+  <script src="ogv.js"></script>
+  <script type="text/javascript">
+
+	function getNewAudio () {
+		if (allAudio.length > 0) {
+			return allAudio.shift();
+		}
+		return false;
+	}
+
+	var context;    // Audio context
+	var buf;        // Audio buffer
+	let playerNode;
+	var myCanvas;
+	function mediaInit() {
+		const canvas = document.getElementById('myVideo');
+		myCanvas = player.YUVCanvas.attach(canvas, { webGL: false });
+
+		if (!window.AudioContext) {
+			if (!window.webkitAudioContext) {
+				alert("Your browser does not support any AudioContext and cannot play back this audio.");
+				return;
+			}
+			window.AudioContext = window.webkitAudioContext;
+		}
+
+		context = new AudioContext();
+		audioPlayerNode = context.createScriptProcessor(4096, 1, 1);
+
+		audioPlayerNode.onaudioprocess = function (event) {
+			const output = event.outputBuffer.getChannelData(0);
+			const newAud = getNewAudio();
+			if (newAud) {
+				for (let i = 0; i < newAud.length; i++) {
+					output[i] = newAud[i];
+				}
+				console.log('Audio output data');
+			}
+		}
+
+		audioPlayerNode.connect(context.destination);
+		requestData();
+	}
+
+	document.getElementById('initAudio').addEventListener('click', () => {
+		mediaInit();
+
+	})
+
+
+	let packetNum = 0;
+	var video = document.querySelector('video');
+	var player;
+	var isVideoPlaying = false;
+
+	const allBuffers = [];
+	const allAudio = [];
+	const allVideo = [];
+	var alreadyStarted = false;
+			
+	var needProcessing = true;
+	var demuxHasFinishedVideo = false;
+	var continuepacekt = 0;
+
+	function playVideo() {
+		if (!alreadyStarted) {
+			alreadyStarted = true;
+			triggerPlay();
+		}
+	}
+
+	function triggerPlay() {
+		setInterval( function (){
+			if (allVideo.length > 0) {
+				myCanvas.drawFrame(allVideo.shift());
+				console.log('====> draw frame');
+			}
+		}, 120);
+	}
+
+	var lastExecutetime = 0;
+	function startLooping () {
+		while (needProcessing) {
+			continuepacekt++;
+			// if (continuepacekt > 5000) {
+			// 	 needProcessing = false;
+			// }
+			playThoughLoop();
+		}
+	}
+	let totalGotInput = 0;
+	function passBinaryData(data) {
+		console.log('====> passed binary data suman');
+		player._codec.receiveInput(data, function () {
+			if (totalGotInput === 0) {
+				player._pingProcessing();
+				setTimeout(() => {
+					needProcessing = true;
+					startLooping();
+				}, 2000);
+
+			} else {
+				player._paused = false;
+				needProcessing = true;
+				delete player.outofRanData;
+				startLooping();
+				
+			}
+			
+			totalGotInput++;
+		});
+	}
+
+	var alreadyPassInit = false;
+	function afterFetch(data) {
+		let myData;
+		if (allBuffers.length > 0 && !alreadyPassInit) {
+			alreadyPassInit = true;
+			player._codec.init(function () {
+				console.log('====> suman process Frames 1');
+				passBinaryData(allBuffers.shift());
+			})
+		}
+	}
+
+	function triggerDequePackets () {
+		while (player._codec.demuxer.videoPackets.length > 0) {
+			triggerDequeuVideoPackets();
+			triggerDequeuAudioPackets();
+		}
+	}
+
+	function playThoughLoop() {
+		if (player.outofRanData) {
+			console.log('suman out of ran data 2');
+			console.log('congrea out of buffer 2');
+			needProcessing = false;
+			if (allBuffers.length > 0) {
+				delete player._codec.outofRanData;
+				continuepacekt = 0;
+				passBinaryData(allBuffers.shift());
+			}
+		} else {
+			if (!player.outofRanData) {
+				// player._doProcessPlayDemux();
+				player._codec.process((more) => {
+					if (!more) {
+						player.outofRanData = true;
+						// startLooping();
+					}
+				});
+			}
+
+			triggerDequeuVideoPackets();
+			triggerDequeuAudioPackets();
+	
+		}
+	}
+
+	function triggerDequeuAudioPackets () {
+		if (player._codec.demuxer.audioPackets.length <= 0 ) return 0;
+		player._codec.demuxer.dequeueAudioPacket((packet, discardPadding) => {
+			player._codec.audioBytes += packet.byteLength;
+			console.log('====> Suman audio byte length ' + this.audioBytes);
+			player._codec.audioDecoder.processAudio(packet, (ret) => {
+				if (discardPadding) {
+					let samples = this.audioDecoder.audioBuffer;
+					let trimmed = [];
+					// for (let channel of samples) {
+					// 	let trim = Math.round(discardPadding * this.audioFormat.rate / 1000000000);
+					// 	if (trim > 0) {
+					// 		trimmed.push(channel.subarray(0, channel.length - Math.min(trim, channel.length)));
+					// 	} else {
+					// 		trimmed.push(channel.subarray(Math.min(Math.abs(trim), channel.length), channel.length));
+					// 	}
+					// }
+					// // kinda hacky for now
+					// this.audioDecoder.audioBuffer = trimmed;
+				}
+				// return cb(ret);
+			});
+		});
+	}
+
+	function triggerDequeuVideoPackets () {
+		console.log('====> suman trigger video hello');
+		if (player._codec.demuxer.videoPackets.length <= 0 ) return 0;
+		player._codec.demuxer.dequeueVideoPacket((packet) => {
+			player._codec.videoBytes += packet.byteLength;
+			player._codec.videoDecoder.processFrame(packet, (ok) => {
+				// hack
+				console.log('====> suman process Frames 2');
+				const data = player._codec.videoDecoder.frameBuffer;
+				allVideo.push(data);
+				playVideo();
+			});
+		});
+	}
+
+	function requestData() {
+		if (packetNum > 12) return;
+		packetNum++;
+		const url = 'media/test' + packetNum + '.webm';
+		console.log('append buffer request url', url);			
+		fetchAB(url, afterFetch);
+	}
+	
+	var mycb = false;
+	var xhr = new XMLHttpRequest;
+	xhr.onload = function () {
+		// var data = new Uint8Array(xhr.response);
+		allBuffers.push(xhr.response);
+		mycb();
+		requestData();
+	};
+	
+	function fetchAB (url, cb) {
+		mycb = cb;
+		xhr.open('get', url);
+		xhr.responseType = 'arraybuffer';
+		xhr.send();
+	};
+
+	function initPlayer() {
+		player = new OGVPlayer({ forceWebGL: true, debug: true, });
+		const codecOptions = {
+			base: "/build",
+			simd: false,
+			threading: false,
+			type: "video/webm",
+			wasm: true,
+			worker: true,
+		}
+
+		player._codec = new OGVWrapperCodec(codecOptions);
+		// player.play();
+	}
+
+	initPlayer();
+
+  </script>
+</body>
+</html>
