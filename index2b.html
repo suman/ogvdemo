@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Simple Player Example</title>
+  <style> 
+	#myVideo { border: 2px solid green; }
+  </style>
+</head>
+<body>
+  <!-- <canvas id="myVideo"	width=900; height=700> </canvas> -->
+  <video autoplay control id="remoteVideo"></video>
+  <button id=pause disabled>Pause</button>
+  <button id='playVideo' disabled>Play Video</button>
+		
+  <script src="ogv.js"></script>
+  <script type="text/javascript">
+
+	var context;    // Audio context
+	var buf;        // Audio buffer
+	let playerNode;
+	var myCanvas;
+	// function mediaInit() {
+	// 	const canvas = document.getElementById('myVideo');
+	// 	myCanvas = player.YUVCanvas.attach(canvas, { webGL: false });
+	// 	requestData();
+	// }
+
+	document.getElementById('playVideo').addEventListener('click', () => {
+		player.play();
+	})
+	
+	setTimeout(() => {
+		var playVideo = document.getElementById('playVideo');
+		playVideo.removeAttribute('disabled');
+	}, 20000);
+	
+
+	let packetNum = 0;
+	var video = document.querySelector('video');
+	var player;
+	var isVideoPlaying = false;
+	const allBuffers = [];
+
+	var alreadyPassInit = false;
+	function afterFetch() {
+		if (allBuffers.length > 0 && !alreadyPassInit) {
+            const data = allBuffers.shift();
+			alreadyPassInit = true;
+            player._loadCodec(data, function (buf) {
+                player._startProcessingVideo(buf);
+            });
+		}
+	}
+
+	
+	function requestData() {
+		if (packetNum > 19) return;
+		packetNum++;
+		const url = 'media/test' + packetNum + '.webm';
+		console.log('append buffer request url', url);			
+		fetchAB(url, afterFetch);
+	}
+	
+	var mycb = false;
+	var xhr = new XMLHttpRequest;
+	xhr.onload = function () {
+		// var data = new Uint8Array(xhr.response);
+		allBuffers.push(xhr.response);
+		mycb();
+		requestData();
+	};
+	
+	function fetchAB (url, cb) {
+		mycb = cb;
+		xhr.open('get', url);
+		xhr.responseType = 'arraybuffer';
+		xhr.send();
+	};
+
+	function initPlayer() {
+		player = new OGVPlayer({ forceWebGL: true, debug: true, });
+		const codecOptions = {
+			base: "/build",
+			simd: false,
+			threading: false,
+			type: "video/webm",
+			wasm: true,
+			worker: true,
+		}
+
+        var container = document.createElement('div');
+        container.appendChild(player);
+        document.body.appendChild(container);
+		// player._codec = new OGVWrapperCodec(codecOptions);
+		// player.play();
+	}
+
+	initPlayer();
+    requestData();
+  </script>
+</body>
+</html>
